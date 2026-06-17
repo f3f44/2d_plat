@@ -1,0 +1,49 @@
+{
+	"solids": [
+		{
+			"beh": {
+				"type": "sine",
+				"center": [
+				300, 
+				75
+				],
+				"amplitude": [
+				0,
+				100
+				],
+				"time offset": 0,
+				"speed": 10
+			}, 
+			"rect": [
+				300, 
+				175, 
+				100, 
+				25
+			]
+		},
+		{
+			"beh": false,
+			"rect": [
+				0, 
+				175, 
+				300, 
+				25
+			],
+			"name": "floor"
+		}
+	],
+	"pads": [
+		{
+			"Type": "jump",
+			"pos": [
+				200,
+				150
+			],
+			"direction": [
+				1,
+				-5
+			],
+			"hidden": false
+		}
+	]
+}

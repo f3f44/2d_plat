@@ -1,0 +1,31 @@
+{
+	"solids": {
+		"floor": [
+			"voice_gaster_1.ogg", 
+			"player.fall>=100"
+		]
+	},
+	"sprites": {
+		"kittyboss.png": {
+			"pos": [
+				100, 
+				-150
+			],
+			"rot": 5,
+			"size": 25,
+			"follow": [
+				0.5,
+				0.5
+			]
+		}
+	},
+	"background": [
+		"bg.jpg",
+		[
+			0.1,
+			0.1
+		],
+		true
+	],
+	"darkness": false
+}
