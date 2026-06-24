@@ -32,6 +32,21 @@
 			"name": "floor"
 		}
 	],
+	"sprites": [
+		{
+			"sprite": "kittyboss.png",
+			"pos": [
+				100, 
+				150
+			],
+			"rot": 0,
+			"size": 50,
+			"follow": [
+				1.0,
+				1.0
+			]
+		}
+	],
 	"pads": [
 		{
 			"Type": "jump",

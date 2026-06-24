@@ -1,8 +1,10 @@
 import time
 init_start = time.perf_counter()
 
-import pygame, math, copy, json, traceback, colorama, psutil, platform, os, io, base64
+import pygame, math, copy, json, colorama, psutil, platform, os, io, tempfile
 import assets.modules.myzip as lvl
+import tkinter as tk
+from tkinter import filedialog
 
 f3_static = [
     f"OS: {platform.system()} {platform.release()}",
@@ -21,7 +23,7 @@ alpha = 0
 colorama.init()
 pygame.init()
 pygame.mixer.init()
-screen_final = pygame.display.set_mode((w, h))
+screen_final = pygame.display.set_mode((w, h), pygame.RESIZABLE)
 screen = pygame.Surface((w//3, h//3), pygame.SRCALPHA)
 clock = pygame.time.Clock()
 Vec2 = pygame.math.Vector2
@@ -29,41 +31,50 @@ os.system('cls')
 
 level = {}
 sprites = {
-    'ERROR': r'assets\sprites\debug\ERROR.png',
-    'jump_pad': r'assets\sprites\jump_pad.png',
-    'player_default_skin': r'assets\sprites\player_skins\Player_default.png',
+    '__ERROR__': r'assets\sprites\debug\ERROR.png',
+    '__jump_pad__': r'assets\sprites\jump_pad.png',
+    '__player_default_skin__': r'assets\sprites\player_skins\Player_default.png',
+    '__logo__': r'assets\sprites\logo.png',
+    '__bg_logo__': r'assets\sprites\logo.png',
+    '__text_logo__': r'assets\sprites\text_logo.png',
 }
 sounds = {}
 
 level_archive = lvl.decode_to_dict(r'.\levels\test.lvl')
-level_data = json.loads(base64.b64decode(level_archive['structure.json']).decode("utf-8"))
-level_config = json.loads(base64.b64decode(level_archive['config.json']).decode("utf-8"))
+level_data = json.loads(level_archive['structure.json'])
+level_config = json.loads(level_archive['config.json'])
 for j, i in level_archive['sprite'].items():
     sprites[j] = i
 for j, i in level_archive['sound'].items():
     sounds[j] = i
 os.system('cls')
-print(f'Structure: {level_data}\nSprites: {sprites}\nSounds: {sounds}')
 #os.system('pause')
-
-#<incert level sounds unziping here>
 
 for j, i in sprites.items():
     try:
         sprites[j] = pygame.image.load(i).convert_alpha()
+        print(f'Sprite {j} loaded from path ({i})')
     except Exception:
         try:
-            sprites[j] = pygame.image.load(io.BytesIO(base64.b64decode(i))).convert_alpha()
+            sprites[j] = pygame.image.load(io.BytesIO(i)).convert_alpha()
+            print(f'Sprite {j} loaded from archive')
         except Exception:
             print(f'\033[38;2;255;0;0mERROR>>>Sprite {i} (known as {j}) does not exist!\033[0m')
-            sprites[j] = sprites['ERROR']
+            sprites[j] = sprites['__ERROR__']
 
 for j, i in sounds.items():
     try:
+        if not (isinstance(i, str) and os.path.exists(i)):
+            raise ValueError
         sounds[j] = pygame.mixer.Sound(i)
+        print(f'Sound {j} loaded from path ({i})')
     except Exception:
         try:
-            sounds[j] = pygame.mixer.Sound(io.BytesIO(base64.b64decode(i)))
+            with tempfile.NamedTemporaryFile(suffix='.ogg', delete=False) as temp_file:
+                temp_file.write(i)
+                temp_file_path = temp_file.name
+            sounds[j] = pygame.mixer.Sound(temp_file_path)
+            print(f'Sound {j} loaded from archive')
         except Exception:
             print(f'\033[38;2;255;0;0mERROR>>>Sound {i} (known as {j}) does not exist!\033[0m')
 
@@ -90,6 +101,9 @@ class Camera:
     def update(self, target):
         if isinstance(target, tuple):
             self.phpos -= (self.phpos-target)/10
+            return
+        r = pygame.Rect(target.pos.x-10, target.pos.y+10, 20, 20)
+        if r.collidepoint((self.pos.x, self.pos.y)):
             return
         self.phpos.x -= (self.phpos.x-target.rect.centerx-(target.vel.x/target.max_speed*400))/5
         self.phpos.y -= (self.phpos.y-target.rect.centery-(target.vel.y/target.max_speed*0))/5
@@ -121,6 +135,24 @@ class Solid:
     def draw(self):
         pygame.draw.rect(screen, (255, 255, 255), (self.rect.x-camera.pos.x, self.rect.y-camera.pos.y, self.rect.width, self.rect.height))
 
+class Visual:
+    def __init__(self, sprite, pos, rot, size, follow):
+        self.pos = Vec2(pos)
+        self.spr = sprites[sprite]
+        r = self.spr.get_rect()
+        hs = size*(r.height/r.width)
+        self.spr = pygame.transform.scale(self.spr, [size, hs])
+        self.spr = pygame.transform.rotate(self.spr, rot)
+        self.follow = Vec2(follow)
+    def draw(self):
+        r = self.spr.get_rect()
+        screen_x = int(self.pos.x - (camera.pos.x * self.follow.x))
+        screen_y = int(self.pos.y - (camera.pos.y * self.follow.y))
+        r.topleft = (screen_x, screen_y)
+        s = screen.get_rect()
+        if r.colliderect(s):
+            screen.blit(self.spr, r.topleft, special_flags=pygame.BLEND_ALPHA_SDL2)
+
 class Pad:
     def __init__(self, pos, Type='jump', direction=(0, 0), hidden=False):
         self.pos = Vec2(pos)
@@ -129,7 +161,7 @@ class Pad:
         self.vec = Vec2(direction)
         self.hid = hidden
         if self.type == 'jump':
-            s = sprites['jump_pad']
+            s = sprites['__jump_pad__']
             angle = self.vec.as_polar()[1]-90
             self.spr = pygame.transform.rotate(s, -angle-180)
             basebox = (Vec2(-14, 1), Vec2(14, 1), Vec2(14, -2), Vec2(-14, -2))
@@ -198,6 +230,9 @@ for i in level_data['solids']:
 level['pads'] = []
 for i in level_data['pads']:
     level['pads'].append(Pad(i['pos'], i.get('Type', 'jump'), i.get('direction', (0, 0)), i.get('hidden', False)))
+level['sprites'] = []
+for i in level_data['sprites']:
+    level['sprites'].append(Visual(i['sprite'], i['pos'], i['rot'], i['size'], i['follow']))
 
 controls = {
     'jump': pygame.K_SPACE,
@@ -207,13 +242,14 @@ controls = {
 }
 
 class Player:
-    def __init__(self, pos=(0, 0), skin=sprites['player_default_skin']):
+    def __init__(self, pos=(0, 0), skin=sprites['__player_default_skin__']):
         self.rect = pygame.Rect(pos[0], pos[1], 6, 14)
         self.pos = Vec2(pos[0], pos[1])
         self.vel = Vec2(0, 0)
         self.max_speed = 30
         self.sprites = []
         self.flip_sprites = []
+        self.hp = 100
         if isinstance(skin, str):
             image = pygame.image.load(skin)
         else:
@@ -254,7 +290,7 @@ class Player:
         for event in event_buf:
             if event.type == pygame.KEYDOWN:
                 if event.key == controls['jump'] and self.ground:
-                    self.vel.y = -2.75
+                    self.vel.y = -3
                 if event.key == controls['run']:
                     self.run = 1
             if event.type == pygame.KEYUP:
@@ -325,7 +361,7 @@ class Player:
         self.stands_on = None
         for i in level['solids']:
             if rect.colliderect(i.rect):
-                self.ground = 1
+                self.ground = True
                 self.stands_on = i.name
                 break
         
@@ -354,6 +390,59 @@ class Player:
             screen.blit(self.flip_sprites[c], (pos[0]-1-camera.pos.x, pos[1]-1-camera.pos.y), special_flags=pygame.BLEND_ALPHA_SDL2)
 player = Player()
 
+def select_file():
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes('-topmost', True)
+    file_path = filedialog.askopenfilename(
+        title="Выберите файл скина",
+        initialdir=os.getcwd(),
+        filetypes=[
+            ("Image files", "*.jpg *.png *.bmp"),
+            ("All files", "*.*")
+        ]
+    )
+    root.destroy()
+    return file_path
+
+globalz = globals()
+menu = None
+
+class Button:
+    def __init__(self, rect, behFile='', menu=None):
+        self.rect = pygame.Rect(rect)
+        try:
+            with open(behFile) as f:
+                self.code = f.read().split('|')
+        except Exception as e:
+            print(f'\033[38;2;255;0;0mERROR>>>Button Behaivior File {behFile} does not exist!\033[0m')
+            print(e)
+        self.p = False
+        self.menu = menu
+    def update(self):
+        global menu
+        if menu!=self.menu:
+            self.p = False
+            return
+        mpos = pygame.mouse.get_pos()
+        m = pygame.mouse.get_pressed()
+        if self.rect.collidepoint(mpos) and m[0]:
+            if self.p:
+                exec(self.code[2], globalz, {'self': self})
+            else:
+                exec(self.code[1], globalz, {'self': self})
+        elif self.p:
+            exec(self.code[3], globalz, {'self': self})
+        exec(self.code[0], globalz, {'self': self})
+        self.p = copy.copy(m[0])
+    def draw(self, look=(255, 255, 255)):
+        if isinstance(look, tuple):
+            pygame.draw.rect(screen_final, look, self.rect)
+        else:
+            screen_final.blit(look, self.rect)
+
+s = w, h
+
 f3mts = 20
 TAA = False
 Text = pygame.font.SysFont('Consolas', f3mts)
@@ -367,14 +456,13 @@ for i in f3_static:
 f3_text = f3_static_text[:]
 temps = pygame.Surface((w, h), pygame.SRCALPHA)
 
-last_time = time.perf_counter()
-accumulator = 0.0
 tick_counter = 0
 real_tps = tps
 last_f3_update = time.perf_counter()
 event_buf = []
 
 adv_f3 = False
+show_fps = False
 
 if level_config['background'][2]:
     bgrect = sprites[level_config['background'][0]].get_rect()
@@ -390,9 +478,32 @@ for j, i in level_config['solids'].items():
 view = limit_view()
 
 fog = screen.copy()
+mask = pygame.Surface((w // 3, h // 3), pygame.SRCALPHA)
 
-init_start = time.perf_counter() - init_start
-print(f"\033[38;2;{int(max(0, min(1, (init_start - 0.5) / 0.5)) * 255)};{int((1 - max(0, min(1, (init_start - 1.0) / 0.5))) * 255)};0mInited in: {round(init_start, 3)}s\033[0m")
+sr = pygame.Rect(0, 0, 800, 600)
+sprites['__bg_logo__'] = pygame.transform.scale(sprites['__bg_logo__'], (64, 64))
+rs = screen_final.get_size()
+rs = (rs[0]+64, rs[1]+64)
+bgscreen = pygame.Surface(rs)
+for y in range(0, rs[1]+64, 64):
+    for x in range(0, rs[0]+64, 64):
+        bgscreen.blit(sprites['__bg_logo__'], (x, y))
+
+pause = False
+pausescr = pygame.Surface((w, h), pygame.SRCALPHA)
+pygame.draw.rect(pausescr, (0, 0, 0, 64), (0, 0, w, h))
+pause_text = [('Resume', r'assets\behFiles\buttons\resume.py')]
+for j, i in enumerate(pause_text):
+    t = Text.render(i[0], TAA, (255, 255, 255))
+    r = t.get_rect()
+    pause_menu = [(Button((25, 100+(f3mts*j), r.width, r.height), i[1], 'pause'), t)]
+sprites['__text_logo__'] = pygame.transform.scale(sprites['__text_logo__'], (264, 40))
+pausescr.blit(sprites['__text_logo__'], (25, 25))
+
+pygame.display.set_caption('2d_plat beta testing v0.2.0')
+pygame.display.set_icon(sprites['__logo__'])
+init_time = time.perf_counter() - init_start
+print(f"\033[38;2;{int(max(0, min(1, (init_time - 0.5) / 0.5)) * 255)};{int((1 - max(0, min(1, (init_time - 1.0) / 0.5))) * 255)};0mInited in: {round(init_time, 3)}s\033[0m")
 
 run = True
 while run:
@@ -400,7 +511,9 @@ while run:
     st = time.perf_counter()
     dt = st - last_time
     last_time = st
-    accumulator += dt
+    if not pause:
+        accumulator += dt
+    true_w, true_h = screen_final.get_size()
     
     events = pygame.event.get()
     for event in events:
@@ -412,10 +525,40 @@ while run:
             if debug_menu:
                 if event.key == pygame.K_p:
                     adv_f3 = not adv_f3
-        event_buf.append(event)
+                if event.key == pygame.K_f:
+                    show_fps = not show_fps
+            if event.key == pygame.K_ESCAPE:
+                pause = not pause
+                if pause:
+                    menu = 'pause'
+                else:
+                    menu = None
+        if event.type == pygame.VIDEORESIZE:
+            sr = screen.get_rect()
+            s = event.w, event.h
+            sr.width, sr.height = (s[0], s[0]*0.75)
+            sr.center = (s[0]//2, s[1]//2)
+            if sr.height > s[1]:
+                sr.width, sr.height = (s[1]/0.75, s[1])
+                sr.center = (s[0]//2, s[1]//2)
+            bgscreen = pygame.Surface((event.w+64, event.h+64))
+            rs = (event.w+64, event.h+64)
+            for y in range(0, rs[1]+64, 64):
+                for x in range(0, rs[0]+64, 64):
+                    bgscreen.blit(sprites['__bg_logo__'], (x, y))
+            pausescr = pygame.Surface((event.w, event.h), pygame.SRCALPHA)
+            pygame.draw.rect(pausescr, (0, 0, 0, 64), (0, 0, event.w, event.h))
+            pausescr.blit(sprites['__text_logo__'], (25, 25))
+        if not pause:
+            event_buf.append(event)
     
-    while accumulator > ttd:
-        alpha = accumulator / ttd
+    if menu != None:
+        pygame.mouse.set_visible(True)
+    else:
+        pygame.mouse.set_visible(False)
+        pygame.mouse.set_pos((s[0]//2, s[1]//2))
+    
+    while accumulator > ttd and not pause:
         tick += 1
         for i in level['solids']:
             i.update()
@@ -430,27 +573,34 @@ while run:
         tick_counter += 1
         event_buf = []
     
-    screen_final.fill((64, 64, 64))
+    screen_final.fill((0, 0, 0))
+    screen_final.blit(bgscreen, ((frame//10)%64-64, (frame//10)%64-64))
     screen.fill((0, 0, 0, 0))
     
     for x in range(int((-camera.pos.x * level_config['background'][1][0]) % bgrect.width - bgrect.width), w // 3 + bgrect.width, bgrect.width):
         for y in range(int((-camera.pos.y * level_config['background'][1][1]) % bgrect.height - bgrect.height), h // 3 + bgrect.height, bgrect.height):
             screen.blit(sprites[level_config['background'][0]], (x, y))
     
-    player.draw()
     for i in level['solids']:
         i.draw()
+    for i in level['sprites']:
+        i.draw()
+    player.draw()
     for i in level['pads']:
         i.draw()
     if level_config['darkness']:
         fog.fill((0, 0, 0, 0))
-        mask = pygame.Surface((w // 3, h // 3), pygame.SRCALPHA)
         mask.fill((0, 0, 0, 255))
         pygame.draw.polygon(mask, (0, 0, 0, 0), view)
         screen.blit(mask, (0, 0))
     
-    scaled_screen = pygame.transform.scale(screen, (w, h))
-    screen_final.blit(scaled_screen, (0, 0))
+    scaled_screen = pygame.transform.scale(screen, (sr.width, sr.height))
+    screen_final.blit(scaled_screen, (sr.x, sr.y))
+    if pause:
+        screen_final.blit(pausescr, (0, 0))
+        for i in pause_menu:
+            i[0].update()
+            i[0].draw(i[1])
     
     if debug_menu and (st - last_f3_update >= 0.5):
         passed_time = st - last_f3_update
@@ -484,7 +634,14 @@ while run:
             r = i.get_rect()
             pygame.draw.rect(temps, (0, 0, 0, 64), (0, f3mts * j, r.width, r.height))
             temps.blit(i, (0, f3mts * j))
-    if debug_menu:
+    elif (st - last_f3_update >= 0.5) and show_fps:
+        temps.fill((0, 0, 0, 0))
+        m = Text.render(f'FPS: {round(clock.get_fps(), 1)}', TAA, (255, 255, 255))
+        r = m.get_rect()
+        pygame.draw.rect(temps, (0, 0, 0, 64), (0, 0, r.width, r.height))
+        temps.blit(m, (0, 0))
+    
+    if debug_menu or show_fps:
         screen_final.blit(temps, (0, 0))
     pygame.display.flip()
     clock.tick()
