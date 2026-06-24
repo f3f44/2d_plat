@@ -1,6 +1,6 @@
 # 2d_plat
 
-WTFaIEDTBSWINTL
+WTFaIEDTBS
 
 Why
 The
@@ -12,8 +12,3 @@ Doing
 This
 Bull
 Shit
-When
-I
-Need
-To
-Learn
